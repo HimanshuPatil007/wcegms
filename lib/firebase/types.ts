@@ -5,6 +5,7 @@ export type BinLocation = {
 
 export type GarbageBin = {
   binId: string;
+  locationName: string | null;
   fillLevel: number;
   gasLevel: number;
   weight: number;

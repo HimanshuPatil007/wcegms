@@ -45,6 +45,11 @@ export function BinCard({ bin }: BinCardProps) {
           <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
             {bin.binId}
           </h3>
+          {bin.locationName ? (
+            <p className="mt-2 text-sm font-medium text-slate-600">
+              {bin.locationName}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
@@ -124,7 +129,12 @@ export function BinCard({ bin }: BinCardProps) {
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
           Location
         </p>
-        <p className="mt-2 text-sm leading-7 text-slate-700">
+        {bin.locationName ? (
+          <p className="mt-2 text-sm font-semibold leading-7 text-slate-800">
+            {bin.locationName}
+          </p>
+        ) : null}
+        <p className={`${bin.locationName ? "" : "mt-2 "}text-sm leading-7 text-slate-700`}>
           Latitude: {bin.location.latitude.toFixed(5)}
         </p>
         <p className="text-sm leading-7 text-slate-700">

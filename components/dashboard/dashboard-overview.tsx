@@ -1,249 +1,248 @@
 "use client";
 
-import { BinCard } from "@/components/dashboard/bin-card";
-import { BinCardSkeleton } from "@/components/dashboard/bin-card-skeleton";
-import { BinMap } from "@/components/dashboard/bin-map";
-import { DashboardStatCard } from "@/components/dashboard/dashboard-stat-card";
-import { useBins } from "@/hooks/use-bins";
-import {
-  GAS_HAZARD_THRESHOLD,
-  getFillStatus,
-  getGasStatus,
-  isCriticalBin,
-} from "@/lib/bin-status";
+import Link from "next/link";
 
-function formatAverageFill(totalFillLevel: number, count: number) {
-  if (count === 0) {
-    return "--";
+import { CampusMap } from "@/components/dashboard/campus-map";
+import { useCampusMonitoring } from "@/hooks/use-campus-monitoring";
+
+function getSeverityClasses(severity: "low" | "medium" | "high") {
+  if (severity === "high") {
+    return "border-rose-500/30 bg-rose-500/10 text-rose-100";
   }
 
-  return `${Math.round(totalFillLevel / count)}%`;
+  if (severity === "medium") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-50";
+  }
+
+  return "border-emerald-400/25 bg-emerald-400/10 text-emerald-50";
 }
 
-function getTotalWeight(bins: ReturnType<typeof useBins>["bins"]) {
-  const totalWeight = bins.reduce((sum, bin) => sum + bin.weight, 0);
+function MiniDonut({
+  high,
+  medium,
+  low,
+  label,
+}: {
+  high: number;
+  medium: number;
+  low: number;
+  label: string;
+}) {
+  const total = Math.max(high + medium + low, 1);
+  const highDegrees = (high / total) * 360;
+  const mediumDegrees = (medium / total) * 360;
 
-  if (totalWeight >= 1000) {
-    return `${(totalWeight / 1000).toFixed(1)} kg`;
-  }
-
-  return `${totalWeight.toFixed(0)} g`;
+  return (
+    <div className="rounded-[24px] border border-cyan-500/10 bg-[#0f1a30] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+        {label}
+      </p>
+      <div className="mt-4 flex items-center gap-4">
+        <div
+          className="h-20 w-20 rounded-full"
+          style={{
+            background: `conic-gradient(#ff3b3b 0deg ${highDegrees}deg, #ff9500 ${highDegrees}deg ${highDegrees + mediumDegrees}deg, #34c759 ${highDegrees + mediumDegrees}deg 360deg)`,
+          }}
+        >
+          <div className="m-4 h-12 w-12 rounded-full bg-[#091121]" />
+        </div>
+        <div className="space-y-2 text-sm text-slate-300">
+          <p>High: {high}</p>
+          <p>Medium: {medium}</p>
+          <p>Low: {low}</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function DashboardOverview() {
-  const { bins, isLoading, errorMessage } = useBins();
+  const { bins, criticalBins, errorMessage, connectionState } =
+    useCampusMonitoring();
 
-  const totalFillLevel = bins.reduce((sum, bin) => sum + bin.fillLevel, 0);
-  const criticalBins = bins.filter(isCriticalBin);
-  const fullBins = bins.filter((bin) => getFillStatus(bin.fillLevel) === "Full");
-  const mediumBins = bins.filter(
-    (bin) => getFillStatus(bin.fillLevel) === "Medium",
-  );
-  const lowBins = bins.filter((bin) => getFillStatus(bin.fillLevel) === "Low");
-  const hazardBins = bins.filter(
-    (bin) => getGasStatus(bin.gasLevel) === "Hazard",
-  );
-  const averageGasLevel =
+  const highCount = bins.filter((bin) => bin.overallSeverity === "high").length;
+  const mediumCount = bins.filter(
+    (bin) => bin.overallSeverity === "medium",
+  ).length;
+  const lowCount = bins.filter((bin) => bin.overallSeverity === "low").length;
+  const averageFill =
     bins.length > 0
-      ? `${Math.round(
-          bins.reduce((sum, bin) => sum + bin.gasLevel, 0) / bins.length,
-        )}`
-      : "--";
+      ? Math.round(bins.reduce((sum, bin) => sum + bin.fill, 0) / bins.length)
+      : 0;
+  const averageGas =
+    bins.length > 0
+      ? Math.round(bins.reduce((sum, bin) => sum + bin.gas, 0) / bins.length)
+      : 0;
 
   return (
     <div className="flex flex-col gap-6">
-      {!isLoading && criticalBins.length > 0 ? (
-        <section className="animate-rise-in rounded-[32px] border border-rose-200 bg-[linear-gradient(135deg,#fff1f2_0%,#ffe4e6_100%)] px-5 py-5 text-rose-900 shadow-[0_18px_50px_rgba(244,63,94,0.10)] sm:px-6 sm:py-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-rose-700">
-            Critical Alert Banner
+      {criticalBins.length > 0 ? (
+        <section className="rounded-[30px] border border-rose-500/25 bg-[linear-gradient(135deg,rgba(127,29,29,0.42),rgba(15,23,42,0.9))] px-6 py-5 text-rose-50 shadow-[0_18px_50px_rgba(127,29,29,0.22)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.26em] text-rose-200">
+            Critical Alert
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-rose-950">
-            {criticalBins.length} critical bin{criticalBins.length === 1 ? "" : "s"} require immediate attention.
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+            {criticalBins.length} bin{criticalBins.length === 1 ? "" : "s"} need
+            immediate review.
           </h2>
-          <p className="mt-3 max-w-4xl text-sm leading-8 text-rose-800 sm:text-base">
-            Full bins use the 80%+ threshold and gas hazards use the {GAS_HAZARD_THRESHOLD}+ threshold.
-            Prioritize pickup or inspection for {criticalBins.map((bin) => bin.binId).join(", ")}.
+          <p className="mt-3 max-w-4xl text-sm leading-8 text-rose-100/90">
+            Priority locations: {criticalBins.slice(0, 5).map((bin) => bin.name).join(", ")}.
           </p>
         </section>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4 xl:gap-5">
-        <DashboardStatCard
-          description="Live count of bins currently streamed from Firebase Realtime Database."
-          label="Connected Bins"
-          tone="emerald"
-          value={isLoading ? "--" : `${bins.length}`}
-        />
-        <DashboardStatCard
-          description="Average fill level across all monitored garbage bins, with 80 percent and above treated as full."
-          label="Average Fill"
-          tone="amber"
-          value={isLoading ? "--" : formatAverageFill(totalFillLevel, bins.length)}
-        />
-        <DashboardStatCard
-          description="Count of bins that have crossed the full threshold and need collection priority."
-          label="Full Bins"
-          tone="rose"
-          value={isLoading ? "--" : `${fullBins.length}`}
-        />
-        <DashboardStatCard
-          description={`Gas hazard threshold is ${GAS_HAZARD_THRESHOLD}. Elevated gas can be reviewed on bin cards and details.`}
-          label="Gas Hazards"
-          tone="sky"
-          value={isLoading ? "--" : `${hazardBins.length}`}
-        />
+      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+        {[
+          { label: "Total Bins", value: bins.length, tone: "cyan" },
+          { label: "High Alert", value: highCount, tone: "rose" },
+          { label: "Medium Level", value: mediumCount, tone: "amber" },
+          { label: "Low Level", value: lowCount, tone: "emerald" },
+        ].map((item) => (
+          <article
+            key={item.label}
+            className="rounded-[28px] border border-cyan-500/12 bg-[#0f1a30] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.28)]"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+              {item.label}
+            </p>
+            <p className="mt-4 text-4xl font-semibold tracking-tight text-white">
+              {item.value}
+            </p>
+            <div
+              className={`mt-5 h-2 rounded-full ${
+                item.tone === "rose"
+                  ? "bg-rose-500/80"
+                  : item.tone === "amber"
+                    ? "bg-amber-400/80"
+                    : item.tone === "emerald"
+                      ? "bg-emerald-400/80"
+                      : "bg-cyan-400/80"
+              }`}
+            />
+          </article>
+        ))}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:gap-5">
-        <DashboardStatCard
-          description="Average gas reading from the current realtime feed."
-          label="Average Gas"
-          tone="rose"
-          value={isLoading ? "--" : averageGasLevel}
-        />
-        <DashboardStatCard
-          description="Total measured weight from all reported bins in grams or kilograms."
-          label="Total Weight"
-          tone="sky"
-          value={isLoading ? "--" : getTotalWeight(bins)}
-        />
-        <DashboardStatCard
-          description="Bins between 50 percent and 80 percent are marked as medium."
-          label="Medium Fill"
-          tone="amber"
-          value={isLoading ? "--" : `${mediumBins.length}`}
-        />
-        <DashboardStatCard
-          description="Bins below 50 percent are considered low and are shown in green."
-          label="Low Fill"
-          tone="emerald"
-          value={isLoading ? "--" : `${lowBins.length}`}
-        />
-      </section>
-
-      <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-        <article className="surface-hover rounded-[34px] border border-white/70 bg-white/90 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <section className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <article className="rounded-[30px] border border-cyan-500/12 bg-[#0f1a30] p-6 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
+          <div className="flex items-end justify-between gap-4">
             <div>
-              <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-600">
-                Realtime Bin Feed
-              </div>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-950">
-                Live garbage bin monitoring grid
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-8 text-slate-600 sm:text-base">
-                These cards are subscribed to Firebase in realtime and will
-                update automatically as bin sensor values change.
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
+                Mini Map
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                Campus deployment view
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
+                The first five locations follow live Firebase readings. The rest
+                mirror the original HTML behavior with dependent simulation.
               </p>
             </div>
-
-            <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900">
-              {isLoading
-                ? "Connecting to realtime feed..."
-                : `Last update: ${bins.length} bin${bins.length === 1 ? "" : "s"} loaded`}
-            </div>
+            <Link
+              className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15"
+              href="/dashboard/map"
+            >
+              Open full map
+            </Link>
+          </div>
+          <div className="mt-6 overflow-hidden rounded-[24px] border border-cyan-500/10">
+            <CampusMap bins={bins} interactive={false} zoom={16} />
           </div>
         </article>
 
-        <article className="surface-hover rounded-[34px] border border-slate-900/8 bg-slate-950 p-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.24)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
-            Feed Notes
+        <article className="rounded-[30px] border border-cyan-500/12 bg-[#0f1a30] p-6 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
+            High Alerts
           </p>
-          <div className="mt-5 space-y-4">
-            {[
-              "Fill levels use Low (0-50), Medium (50-80), and Full (80+) thresholds.",
-              `Gas levels use Safe, Elevated, and Hazard states with ${GAS_HAZARD_THRESHOLD} as the hazard threshold.`,
-              "Critical bins are highlighted across the dashboard when either threshold becomes severe.",
-            ].map((item) => (
-              <div
-                key={item}
-                className="rounded-[22px] border border-white/10 bg-white/6 px-4 py-4 text-sm leading-7 text-slate-200"
-              >
-                {item}
+          <div className="mt-5 space-y-3">
+            {criticalBins.length === 0 ? (
+              <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-4 py-4 text-sm text-emerald-100">
+                No high alerts at the moment.
               </div>
-            ))}
+            ) : (
+              criticalBins.slice(0, 5).map((bin) => (
+                <div
+                  key={bin.id}
+                  className="rounded-[22px] border border-rose-500/18 bg-rose-500/8 px-4 py-4"
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{bin.name}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {bin.id}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 text-xs">
+                      <span className={`rounded-full border px-3 py-1 ${getSeverityClasses(bin.fillSeverity)}`}>
+                        Fill {bin.fill.toFixed(0)}%
+                      </span>
+                      <span className={`rounded-full border px-3 py-1 ${getSeverityClasses(bin.gasSeverity)}`}>
+                        Gas {bin.gas.toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-3">
+        <MiniDonut
+          high={highCount}
+          low={lowCount}
+          medium={mediumCount}
+          label="Overall Severity"
+        />
+        <article className="rounded-[24px] border border-cyan-500/10 bg-[#0f1a30] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+            Live Averages
+          </p>
+          <div className="mt-4 space-y-4">
+            <div>
+              <div className="flex items-center justify-between text-sm text-slate-300">
+                <span>Average fill</span>
+                <span>{averageFill}%</span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-slate-800">
+                <div
+                  className="h-2 rounded-full bg-[linear-gradient(90deg,#00d4ff,#00ff88)]"
+                  style={{ width: `${averageFill}%` }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between text-sm text-slate-300">
+                <span>Average gas</span>
+                <span>{averageGas}%</span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-slate-800">
+                <div
+                  className="h-2 rounded-full bg-[linear-gradient(90deg,#ff9500,#ff3b3b)]"
+                  style={{ width: `${averageGas}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </article>
+        <article className="rounded-[24px] border border-cyan-500/10 bg-[#0f1a30] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+            Monitor Notes
+          </p>
+          <div className="mt-4 space-y-3 text-sm leading-7 text-slate-300">
+            <p>Fill and gas use the original `high / medium / low` thresholds of 80 and 50.</p>
+            <p>Locations 1 to 5 are treated as the live sensor cluster.</p>
+            <p>
+              Status: {connectionState === "live" ? "Firebase connected" : "running with simulated support"}.
+            </p>
           </div>
         </article>
       </section>
 
       {errorMessage ? (
-        <section className="animate-rise-in rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-5 text-rose-700 shadow-[0_12px_30px_rgba(244,63,94,0.08)]">
-          <p className="text-sm font-semibold uppercase tracking-[0.22em]">
-            Realtime Feed Error
-          </p>
-          <p className="mt-2 text-sm leading-7">{errorMessage}</p>
-        </section>
-      ) : null}
-
-      <section className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <article className="surface-hover rounded-[34px] border border-white/70 bg-white/92 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-4 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">
-                Interactive Map
-              </div>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-                Live bin locations across the deployment area
-              </h2>
-              <p className="mt-3 max-w-2xl text-sm leading-8 text-slate-600 sm:text-base">
-                Each marker is plotted from bin latitude and longitude. Click a
-                marker to inspect bin ID, fill level, gas level, and weight.
-              </p>
-            </div>
-
-            <div className="rounded-[24px] border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900">
-              {isLoading
-                ? "Preparing live map..."
-                : `${bins.length} mapped bin${bins.length === 1 ? "" : "s"}`}
-            </div>
-          </div>
-
-          <div className="mt-6 overflow-hidden rounded-[28px] border border-slate-200">
-            <BinMap bins={bins} isLoading={isLoading} />
-          </div>
-        </article>
-
-        <article className="surface-hover rounded-[34px] border border-slate-900/8 bg-slate-950 p-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.24)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-300">
-            Map Popups
-          </p>
-          <div className="mt-5 space-y-4">
-            {[
-              "Every marker popup shows bin ID, fill level, gas level, and weight.",
-              "The map center adjusts automatically from the current bin coordinates.",
-              "This module is loaded client-side only to avoid Leaflet SSR issues.",
-            ].map((item) => (
-              <div
-                key={item}
-                className="rounded-[22px] border border-white/10 bg-white/6 px-4 py-4 text-sm leading-7 text-slate-200"
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3 xl:gap-5">
-        {isLoading
-          ? Array.from({ length: 6 }, (_, index) => (
-              <BinCardSkeleton key={`bin-skeleton-${index}`} />
-            ))
-          : bins.map((bin) => <BinCard key={bin.binId} bin={bin} />)}
-      </section>
-
-      {!isLoading && bins.length === 0 ? (
-        <section className="animate-rise-in rounded-[32px] border border-slate-200 bg-white/90 p-8 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-            No Bins Found
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-            The realtime database is connected, but no bin records are available yet.
-          </h2>
-          <p className="mt-4 text-sm leading-8 text-slate-600">
-            Add bin data under the `bins` node in Firebase Realtime Database to
-            populate this live dashboard grid.
-          </p>
+        <section className="rounded-[24px] border border-rose-500/18 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
+          {errorMessage}
         </section>
       ) : null}
     </div>

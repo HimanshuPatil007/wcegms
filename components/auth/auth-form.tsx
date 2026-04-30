@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -33,6 +31,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
   const isSignup = mode === "signup";
   const formError = localError ?? errorMessage;
+  const [showPassword, setShowPassword] = useState(false);
 
   function updateField(field: keyof FormState, value: string) {
     setForm((currentForm) => ({
@@ -92,21 +91,23 @@ export function AuthForm({ mode }: AuthFormProps) {
   return (
     <form className="space-y-5" onSubmit={handleSubmit}>
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">
-          {isSignup ? "Create account" : "Welcome back"}
-        </p>
-        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
-          {isSignup ? "Sign up for the dashboard" : "Log in to continue"}
+        <h2 className="text-center text-5xl font-semibold tracking-[-0.04em] text-slate-950">
+          {isSignup ? "Create Account" : "Hello Again!"}
         </h2>
+        <p className="mt-16 text-sm font-medium text-slate-800">
+          {isSignup
+            ? "Create your workspace account to access the dashboard"
+            : "Let’s get started with your 30 days trial"}
+        </p>
       </div>
 
       {isSignup ? (
         <label className="block space-y-2">
-          <span className="text-sm font-medium text-slate-700">Display Name</span>
+          <span className="sr-only">Display Name</span>
           <input
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white"
+            className="w-full rounded-2xl border border-white bg-white px-5 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#ba8a95] focus:shadow-[0_0_0_4px_rgba(186,138,149,0.12)]"
             name="displayName"
-            placeholder="Operations Admin"
+            placeholder="Display Name"
             value={form.displayName}
             onChange={(event) => updateField("displayName", event.target.value)}
           />
@@ -114,11 +115,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       ) : null}
 
       <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Email</span>
+        <span className="sr-only">Email</span>
         <input
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white"
+          className="w-full rounded-2xl border border-white bg-white px-5 py-4 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#ba8a95] focus:shadow-[0_0_0_4px_rgba(186,138,149,0.12)]"
           name="email"
-          placeholder="admin@example.com"
+          placeholder="Email"
           type="email"
           value={form.email}
           onChange={(event) => updateField("email", event.target.value)}
@@ -126,16 +127,37 @@ export function AuthForm({ mode }: AuthFormProps) {
       </label>
 
       <label className="block space-y-2">
-        <span className="text-sm font-medium text-slate-700">Password</span>
-        <input
-          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:bg-white"
-          name="password"
-          placeholder="Minimum 6 characters"
-          type="password"
-          value={form.password}
-          onChange={(event) => updateField("password", event.target.value)}
-        />
+        <span className="sr-only">Password</span>
+        <div className="relative">
+          <input
+            className="w-full rounded-2xl border border-white bg-white px-5 py-4 pr-14 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#ba8a95] focus:shadow-[0_0_0_4px_rgba(186,138,149,0.12)]"
+            name="password"
+            placeholder="Password"
+            type={showPassword ? "text" : "password"}
+            value={form.password}
+            onChange={(event) => updateField("password", event.target.value)}
+          />
+          <button
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-slate-400 transition hover:text-slate-700"
+            onClick={() => setShowPassword((currentValue) => !currentValue)}
+            type="button"
+          >
+            {showPassword ? "◉" : "◌"}
+          </button>
+        </div>
       </label>
+
+      {!isSignup ? (
+        <div className="text-right">
+          <button
+            className="text-sm font-medium text-slate-400 transition hover:text-slate-700"
+            type="button"
+          >
+            Recovery Password
+          </button>
+        </div>
+      ) : null}
 
       {formError ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -144,7 +166,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       ) : null}
 
       <button
-        className="w-full rounded-2xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+        className="mt-2 w-full rounded-2xl bg-[#a77482] px-5 py-4 text-lg font-semibold text-white shadow-[0_18px_35px_rgba(167,116,130,0.28)] transition hover:bg-[#956573] disabled:cursor-not-allowed disabled:bg-slate-400"
         disabled={isPending}
         type="submit"
       >
@@ -153,16 +175,38 @@ export function AuthForm({ mode }: AuthFormProps) {
             ? "Creating account..."
             : "Logging in..."
           : isSignup
-            ? "Create account"
-            : "Log in"}
+            ? "Create Account"
+            : "Sign In"}
       </button>
 
-      <Link
-        className="block text-center text-sm font-medium text-slate-500 transition hover:text-slate-900"
-        href="/"
-      >
-        Return to project overview
-      </Link>
+      {!isSignup ? (
+        <div className="pt-6">
+          <div className="flex items-center gap-4 text-sm text-slate-400">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span>Or continue with</span>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <div className="mt-8 flex items-center justify-center gap-8">
+            {[
+              { label: "Google", mark: "G" },
+              { label: "Apple", mark: "" },
+              { label: "Facebook", mark: "f" },
+            ].map((provider) => (
+              <button
+                key={provider.label}
+                aria-label={`Continue with ${provider.label}`}
+                className={`flex h-14 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-3xl text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                  provider.label === "Apple" ? "shadow-[0_10px_24px_rgba(15,23,42,0.16)]" : ""
+                }`}
+                type="button"
+              >
+                {provider.mark}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }

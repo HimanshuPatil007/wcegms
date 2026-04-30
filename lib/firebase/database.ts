@@ -1,5 +1,6 @@
 import { get, onValue, ref } from "firebase/database";
 
+import { getBinLocationName } from "@/lib/bin-location-names";
 import { getRealtimeDatabase } from "@/lib/firebase/config";
 import type { BinLocation, GarbageBin, GarbageBinRecord } from "@/lib/firebase/types";
 
@@ -25,9 +26,18 @@ function normalizeLocation(value: unknown): BinLocation {
 
 function normalizeBinRecord(binId: string, value: unknown): GarbageBin {
   const rawBin = (value ?? {}) as Partial<GarbageBin>;
+  const normalizedBinId = rawBin.binId?.trim() || binId;
+  const locationName =
+    (typeof rawBin.locationName === "string" && rawBin.locationName.trim()) ||
+    (typeof (rawBin as { name?: string }).name === "string" &&
+      (rawBin as { name?: string }).name?.trim()) ||
+    (typeof (rawBin as { label?: string }).label === "string" &&
+      (rawBin as { label?: string }).label?.trim()) ||
+    getBinLocationName(normalizedBinId);
 
   return {
-    binId: rawBin.binId?.trim() || binId,
+    binId: normalizedBinId,
+    locationName: locationName || null,
     fillLevel: toNumber(rawBin.fillLevel),
     gasLevel: toNumber(rawBin.gasLevel),
     weight: toNumber(rawBin.weight),

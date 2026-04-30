@@ -72,6 +72,9 @@ export function BinMapCanvas({ bins }: BinMapCanvasProps) {
           <Popup>
             <div className="min-w-[180px] space-y-2 text-sm text-slate-800">
               <p className="text-base font-semibold text-slate-950">{bin.binId}</p>
+              {bin.locationName ? (
+                <p className="font-medium text-slate-700">{bin.locationName}</p>
+              ) : null}
               <p>Fill Level: {bin.fillLevel.toFixed(0)}%</p>
               <p>Gas Level: {bin.gasLevel.toFixed(0)}</p>
               <p>Weight: {bin.weight.toFixed(0)} g</p>

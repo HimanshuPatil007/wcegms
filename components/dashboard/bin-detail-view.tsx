@@ -142,6 +142,11 @@ export function BinDetailView({ binId }: BinDetailViewProps) {
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">
               {bin.binId}
             </h1>
+            {bin.locationName ? (
+              <p className="mt-3 text-lg font-medium text-slate-700">
+                {bin.locationName}
+              </p>
+            ) : null}
             <p className="mt-3 max-w-2xl text-sm leading-8 text-slate-600 sm:text-base">
               Full sensor detail for this smart garbage bin, including live
               fill, gas, weight, coordinate data, and status-ready indicators.
@@ -184,8 +189,8 @@ export function BinDetailView({ binId }: BinDetailViewProps) {
           },
           {
             label: "Location",
-            value: `${bin.location.latitude.toFixed(4)}, ${bin.location.longitude.toFixed(4)}`,
-            description: "Live latitude and longitude for map plotting and routing.",
+            value: bin.locationName || "Coordinates only",
+            description: `${bin.location.latitude.toFixed(4)}, ${bin.location.longitude.toFixed(4)}`,
           },
         ].map((metric) => (
           <article

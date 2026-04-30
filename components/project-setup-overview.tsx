@@ -146,6 +146,7 @@ public/
               <code>{`bins: {
   BIN_001: {
     binId: "BIN_001",
+    locationName: "Main Gate",
     fillLevel: 72,
     gasLevel: 18,
     weight: 12450,
