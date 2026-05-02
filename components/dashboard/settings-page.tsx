@@ -10,7 +10,6 @@ export function SettingsPage() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
-  const customBins = bins.filter((bin) => !bin.isDefault);
 
   async function handleAddLocation() {
     const parsedLatitude = Number(latitude);
@@ -48,26 +47,21 @@ export function SettingsPage() {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-      <section className="rounded-[30px] border border-cyan-500/12 bg-[#0f1a30] p-6 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-cyan-300">
+      <section className="rounded-[34px] border border-white/8 bg-[linear-gradient(180deg,#121d30_0%,#0c1422_100%)] p-7 shadow-[0_18px_50px_rgba(2,6,23,0.34)] xl:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-amber-200">
           Settings
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-          Manage custom locations
+          Manage bin locations
         </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
-          This carries over the add and delete controls from the HTML reference.
-          Default campus bins stay protected, while custom bins can be created
-          and removed.
-        </p>
 
-        <div className="mt-6 grid gap-4">
+        <div className="mt-7 grid gap-5">
           <label className="text-sm text-slate-300">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
               Bin Name
             </span>
             <input
-              className="w-full rounded-xl border border-cyan-500/15 bg-[#101b33] px-4 py-3 text-white outline-none"
+              className="w-full rounded-2xl border border-cyan-500/15 bg-[#101b33] px-5 py-4 text-base text-white outline-none"
               onChange={(event) => setName(event.target.value)}
               placeholder="New campus location"
               value={name}
@@ -80,7 +74,7 @@ export function SettingsPage() {
                 Latitude
               </span>
               <input
-                className="w-full rounded-xl border border-cyan-500/15 bg-[#101b33] px-4 py-3 text-white outline-none"
+                className="w-full rounded-2xl border border-cyan-500/15 bg-[#101b33] px-5 py-4 text-base text-white outline-none"
                 onChange={(event) => setLatitude(event.target.value)}
                 placeholder="16.8450"
                 value={latitude}
@@ -91,7 +85,7 @@ export function SettingsPage() {
                 Longitude
               </span>
               <input
-                className="w-full rounded-xl border border-cyan-500/15 bg-[#101b33] px-4 py-3 text-white outline-none"
+                className="w-full rounded-2xl border border-cyan-500/15 bg-[#101b33] px-5 py-4 text-base text-white outline-none"
                 onChange={(event) => setLongitude(event.target.value)}
                 placeholder="74.6020"
                 value={longitude}
@@ -100,47 +94,52 @@ export function SettingsPage() {
           </div>
 
           <button
-            className="w-full rounded-xl bg-[linear-gradient(135deg,#00d4ff,#0099cc)] px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110"
+            className="w-full rounded-2xl bg-[linear-gradient(135deg,#00d4ff,#0099cc)] px-5 py-4 text-base font-semibold text-slate-950 transition hover:brightness-110"
             onClick={handleAddLocation}
             type="button"
           >
-            Add custom location
+            Add bin location
           </button>
         </div>
 
         {feedback ? (
-          <div className="mt-4 rounded-[18px] border border-cyan-500/12 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100">
+          <div className="mt-5 rounded-[22px] border border-cyan-500/12 bg-cyan-500/8 px-5 py-4 text-base text-cyan-100">
             {feedback}
           </div>
         ) : null}
       </section>
 
-      <section className="rounded-[30px] border border-cyan-500/12 bg-[#0f1a30] p-6 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-cyan-300">
+      <section className="rounded-[34px] border border-white/8 bg-[linear-gradient(180deg,#121d30_0%,#0c1422_100%)] p-7 shadow-[0_18px_50px_rgba(2,6,23,0.34)] xl:p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.26em] text-amber-200">
           Delete Bins
         </p>
-        <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
-          Custom location list
+        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+          Existing bin list
         </h2>
-        <div className="mt-5 space-y-3">
-          {customBins.length === 0 ? (
-            <div className="rounded-[18px] border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-slate-300">
-              No custom bins yet. The list will populate after you add one.
+        <div className="mt-6 space-y-4">
+          {bins.length === 0 ? (
+            <div className="rounded-[22px] border border-white/8 bg-white/[0.03] px-5 py-5 text-base text-slate-300">
+              No bins available.
             </div>
           ) : (
-            customBins.map((bin) => (
+            bins.map((bin) => (
               <div
                 key={bin.id}
-                className="flex items-center justify-between gap-4 rounded-[18px] border border-white/8 bg-white/[0.03] px-4 py-4"
+                className="flex flex-col gap-4 rounded-[24px] border border-white/8 bg-white/[0.03] px-5 py-5 xl:flex-row xl:items-center xl:justify-between xl:px-6 xl:py-6"
               >
                 <div>
-                  <p className="text-sm font-semibold text-white">{bin.name}</p>
-                  <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-lg font-semibold text-white">{bin.name}</p>
+                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                      {bin.isDefault ? "Default" : "Custom"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
                     {bin.id}
                   </p>
                 </div>
                 <button
-                  className="rounded-full bg-[linear-gradient(135deg,#ff3b3b,#cc0000)] px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="rounded-full bg-[linear-gradient(135deg,#ff3b3b,#cc0000)] px-5 py-3 text-base font-semibold text-white transition hover:brightness-110"
                   onClick={() => handleDeleteLocation(bin.id)}
                   type="button"
                 >

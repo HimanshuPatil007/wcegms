@@ -6,12 +6,14 @@ export default function LoginPage() {
   return (
     <AuthGuard redirectTo="/dashboard">
       <AuthShell
-        description="Sign in to monitor fill level, gas level, weight, and mapped bin locations in real time."
-        eyebrow="Firebase Auth"
+        description=""
+        eyebrow=""
         footerAction="Create an account"
         footerHref="/signup"
         footerLabel="Need access?"
-        title="Secure access for your waste operations dashboard."
+        heroImageAlt="WCE GMS smart garbage collection system illustration"
+        heroImageSrc="/wce-gms-icon.png"
+        title=""
       >
         <AuthForm mode="login" />
       </AuthShell>

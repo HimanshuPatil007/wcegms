@@ -13,6 +13,7 @@ function buildHistorySeries(seed: number) {
       label,
       fill: Math.max(0, Math.min(100, seed + drift)),
       gas: Math.max(0, Math.min(100, seed - drift / 1.8)),
+      weight: Math.max(0, Math.min(100, seed - drift / 2.4 + 6)),
     };
   });
 }
@@ -57,31 +58,37 @@ export function AnalyticsPage() {
   );
   const fillValues = bins.map((bin) => Math.round(bin.fill));
   const gasValues = bins.map((bin) => Math.round(bin.gas));
+  const weightValues = bins.map((bin) => Math.round(bin.weightPercent));
   const fillHigh = bins.filter((bin) => bin.fillSeverity === "high").length;
   const fillMedium = bins.filter((bin) => bin.fillSeverity === "medium").length;
   const fillLow = bins.filter((bin) => bin.fillSeverity === "low").length;
   const gasHigh = bins.filter((bin) => bin.gasSeverity === "high").length;
   const gasMedium = bins.filter((bin) => bin.gasSeverity === "medium").length;
   const gasLow = bins.filter((bin) => bin.gasSeverity === "low").length;
+  const weightHigh = bins.filter((bin) => bin.weightSeverity === "high").length;
+  const weightMedium = bins.filter((bin) => bin.weightSeverity === "medium").length;
+  const weightLow = bins.filter((bin) => bin.weightSeverity === "low").length;
   const averageFill =
     bins.length > 0
       ? bins.reduce((sum, bin) => sum + bin.fill, 0) / bins.length
       : 50;
-  const history = buildHistorySeries(activeBin ? activeBin.fill : averageFill);
+  const averageGas =
+    bins.length > 0 ? bins.reduce((sum, bin) => sum + bin.gas, 0) / bins.length : 50;
+  const averageWeight =
+    bins.length > 0
+      ? bins.reduce((sum, bin) => sum + bin.weightPercent, 0) / bins.length
+      : 50;
+  const historySeed = activeBin
+    ? (activeBin.fill + activeBin.gas + activeBin.weightPercent) / 3
+    : (averageFill + averageGas + averageWeight) / 3;
+  const history = buildHistorySeries(historySeed);
 
   return (
-    <section className="rounded-[30px] border border-cyan-500/12 bg-[#0f1a30] p-6 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
+    <section className="rounded-[34px] border border-white/8 bg-[linear-gradient(180deg,#121d30_0%,#0c1422_100%)] p-7 shadow-[0_18px_50px_rgba(2,6,23,0.34)] xl:p-8">
       <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.26em] text-cyan-300">
+          <p className="text-base font-semibold uppercase tracking-[0.3em] text-amber-200 xl:text-lg">
             Analytics
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">
-            Fill and gas breakdown
-          </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300">
-            This mirrors the original reference view with bar summaries,
-            distribution panels, and a trend-style history selector.
           </p>
         </div>
 
@@ -90,7 +97,7 @@ export function AnalyticsPage() {
             History Focus
           </span>
           <select
-            className="rounded-xl border border-cyan-500/15 bg-[#101b33] px-4 py-3 text-white outline-none"
+            className="rounded-xl border border-white/10 bg-[#172337] px-4 py-3 text-white outline-none"
             onChange={(event) => setSelectedId(event.target.value)}
             value={selectedId}
           >
@@ -146,6 +153,26 @@ export function AnalyticsPage() {
         </article>
 
         <article className="rounded-[24px] border border-cyan-500/10 bg-[#101b33] p-5">
+          <p className="text-sm font-semibold text-white">Weight level by location</p>
+          <div className="mt-5 space-y-3">
+            {labels.map((label, index) => (
+              <div key={`${label}-weight`}>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>{label}</span>
+                  <span>{weightValues[index]}%</span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-800">
+                  <div
+                    className={`h-2 rounded-full ${getBarColor(weightValues[index])}`}
+                    style={{ width: `${weightValues[index]}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="rounded-[24px] border border-cyan-500/10 bg-[#101b33] p-5">
           <p className="text-sm font-semibold text-white">Fill severity distribution</p>
           <div className="mt-5 grid grid-cols-3 gap-3 text-center">
             {[
@@ -177,6 +204,22 @@ export function AnalyticsPage() {
           </div>
         </article>
 
+        <article className="rounded-[24px] border border-cyan-500/10 bg-[#101b33] p-5">
+          <p className="text-sm font-semibold text-white">Weight severity distribution</p>
+          <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+            {[
+              { label: "High", value: weightHigh, tone: "bg-rose-500/15 text-rose-100" },
+              { label: "Medium", value: weightMedium, tone: "bg-amber-400/15 text-amber-100" },
+              { label: "Low", value: weightLow, tone: "bg-emerald-400/15 text-emerald-100" },
+            ].map((item) => (
+              <div key={item.label} className={`rounded-[18px] px-4 py-5 ${item.tone}`}>
+                <p className="text-xs uppercase tracking-[0.18em]">{item.label}</p>
+                <p className="mt-2 text-3xl font-semibold">{item.value}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
         <article className="rounded-[24px] border border-cyan-500/10 bg-[#101b33] p-5 xl:col-span-2">
           <p className="text-sm font-semibold text-white">History trend</p>
           <p className="mt-2 text-sm text-slate-400">
@@ -198,7 +241,27 @@ export function AnalyticsPage() {
                 stroke="#ff9500"
                 strokeWidth="2"
               />
+              <polyline
+                fill="none"
+                points={buildPolyline(history.map((point) => point.weight))}
+                stroke="#8b5cf6"
+                strokeWidth="2"
+              />
             </svg>
+            <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400">
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#00d4ff]" />
+                Fill
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#ff9500]" />
+                Gas
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#8b5cf6]" />
+                Weight
+              </span>
+            </div>
             <div className="mt-3 grid grid-cols-7 gap-2 text-center text-[11px] text-slate-500">
               {history.map((point) => (
                 <span key={point.label}>{point.label}</span>

@@ -9,14 +9,19 @@ import {
 } from "react";
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
   type User,
 } from "firebase/auth";
+import { get, ref, set } from "firebase/database";
 
-import { getFirebaseAuth, isFirebaseConfigured } from "@/lib/firebase/config";
+import { getFirebaseAuth, getRealtimeDatabase, isFirebaseConfigured } from "@/lib/firebase/config";
+import { isBuiltInAdminEmail, type AccessRole } from "@/lib/app-user-access";
+import { EMPLOYEE_PROFILES } from "@/lib/employee-profiles";
 
 type AuthCredentials = {
   email: string;
@@ -34,10 +39,27 @@ type AuthContextValue = {
   errorMessage: string | null;
   signup: (credentials: SignupCredentials) => Promise<void>;
   login: (credentials: AuthCredentials) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function resolveDefaultAccessRole(email: string | null | undefined): AccessRole {
+  if (isBuiltInAdminEmail(email)) {
+    return "admin";
+  }
+
+  const matchingEmployee = EMPLOYEE_PROFILES.find(
+    (employee) => employee.authEmail.toLowerCase() === email?.trim().toLowerCase(),
+  );
+
+  if (!matchingEmployee) {
+    return "user";
+  }
+
+  return matchingEmployee.role === "Admin" ? "admin" : "employee";
+}
 
 function toReadableAuthError(error: unknown) {
   if (
@@ -65,6 +87,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ? "Firebase environment variables are missing. Add them before using authentication."
     : runtimeError;
 
+  async function syncAuthenticatedUserRecord(nextUser: User) {
+    const userRef = ref(getRealtimeDatabase(), `/appUsers/${nextUser.uid}`);
+    const snapshot = await get(userRef);
+    const existingUser = snapshot.exists()
+      ? (snapshot.val() as {
+          displayName?: string;
+          email?: string;
+          accessRole?: AccessRole;
+          createdAt?: number;
+        })
+      : null;
+    const email = nextUser.email ?? existingUser?.email ?? "";
+    const defaultAccessRole = resolveDefaultAccessRole(email);
+
+    await set(userRef, {
+      uid: nextUser.uid,
+      email,
+      displayName:
+        nextUser.displayName?.trim() ||
+        existingUser?.displayName ||
+        email.split("@")[0] ||
+        "Operations User",
+      accessRole: existingUser?.accessRole ?? defaultAccessRole,
+      createdAt: existingUser?.createdAt ?? Date.now(),
+      lastLoginAt: Date.now(),
+    });
+  }
+
   useEffect(() => {
     if (!isConfigured) {
       return;
@@ -73,6 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(getFirebaseAuth(), (nextUser) => {
       setUser(nextUser);
       setIsLoading(false);
+
+      if (nextUser) {
+        void syncAuthenticatedUserRecord(nextUser);
+      }
     });
 
     return unsubscribe;
@@ -93,13 +147,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setUser(getFirebaseAuth().currentUser);
     }
+
+    await syncAuthenticatedUserRecord(credential.user);
   }
 
   async function login({ email, password }: AuthCredentials) {
     setRuntimeError(null);
 
     try {
-      await signInWithEmailAndPassword(getFirebaseAuth(), email, password);
+      const credential = await signInWithEmailAndPassword(
+        getFirebaseAuth(),
+        email,
+        password,
+      );
+      await syncAuthenticatedUserRecord(credential.user);
     } catch (error) {
       setRuntimeError(toReadableAuthError(error));
       throw error;
@@ -109,6 +170,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function logout() {
     setRuntimeError(null);
     await signOut(getFirebaseAuth());
+  }
+
+  async function loginWithGoogle() {
+    setRuntimeError(null);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      const credential = await signInWithPopup(getFirebaseAuth(), provider);
+      await syncAuthenticatedUserRecord(credential.user);
+    } catch (error) {
+      setRuntimeError(toReadableAuthError(error));
+      throw error;
+    }
   }
 
   const value: AuthContextValue = {
@@ -125,6 +199,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     login,
+    loginWithGoogle,
     logout,
   };
 

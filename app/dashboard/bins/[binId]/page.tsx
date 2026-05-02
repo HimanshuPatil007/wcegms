@@ -1,3 +1,4 @@
+import { RoleGuard } from "@/components/auth/role-guard";
 import { BinDetailView } from "@/components/dashboard/bin-detail-view";
 
 type BinDetailPageProps = {
@@ -9,5 +10,9 @@ type BinDetailPageProps = {
 export default async function BinDetailPage({ params }: BinDetailPageProps) {
   const { binId } = await params;
 
-  return <BinDetailView binId={binId} />;
+  return (
+    <RoleGuard allowedRoles={["admin"]}>
+      <BinDetailView binId={binId} />
+    </RoleGuard>
+  );
 }

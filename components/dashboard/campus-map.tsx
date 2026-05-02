@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-import type { MonitoringBin } from "@/hooks/use-campus-monitoring";
+import type { LiveTruck, MonitoringBin } from "@/hooks/use-campus-monitoring";
 
 const CampusMapCanvas = dynamic(
   () =>
@@ -12,8 +12,12 @@ const CampusMapCanvas = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex min-h-[260px] items-center justify-center rounded-[24px] border border-cyan-500/20 bg-[#0f1a30] text-sm text-slate-300">
-        Preparing map surface...
+      <div className="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-[24px] border border-cyan-500/20 bg-[linear-gradient(180deg,#0f1a30_0%,#091224_100%)] text-sm text-slate-300">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),transparent_35%)]" />
+        <div className="relative flex items-center gap-3 rounded-full border border-cyan-400/20 bg-cyan-400/8 px-5 py-3">
+          <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,0.8)]" />
+          Preparing map surface...
+        </div>
       </div>
     ),
   },
@@ -21,12 +25,24 @@ const CampusMapCanvas = dynamic(
 
 export function CampusMap({
   bins,
+  truck,
   interactive = true,
+  heightClass,
   zoom,
 }: {
   bins: MonitoringBin[];
+  truck: LiveTruck | null;
   interactive?: boolean;
+  heightClass?: string;
   zoom?: number;
 }) {
-  return <CampusMapCanvas bins={bins} interactive={interactive} zoom={zoom} />;
+  return (
+    <CampusMapCanvas
+      bins={bins}
+      heightClass={heightClass}
+      interactive={interactive}
+      truck={truck}
+      zoom={zoom}
+    />
+  );
 }
