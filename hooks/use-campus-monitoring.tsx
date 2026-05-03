@@ -100,6 +100,12 @@ const MAX_WEIGHT_GRAMS = 20000;
 const TRUCK_NEARBY_OFFSET = 0.00045;
 const TRUCK_UPDATE_INTERVAL_MS = 30000;
 const DEPENDENT_BINS_UPDATE_INTERVAL_MS = 60000;
+const WEIGHT_LOCATION_ALIASES: Partial<
+  Record<(typeof LIVE_LOCATION_IDS)[number], string[]>
+> = {
+  location1: ["A", "a", "locationA", "LocationA", "location A", "Location A"],
+  location2: ["B", "b", "locationB", "LocationB", "location B", "Location B"],
+};
 
 function randomPercent() {
   return Math.round(Math.random() * 1000) / 10;
@@ -504,6 +510,55 @@ function findBinInData(
   return null;
 }
 
+function findLocationAliasInData(
+  data: Record<string, unknown>,
+  aliases: string[],
+): Record<string, unknown> | null {
+  for (const alias of aliases) {
+    const directMatch = data[alias];
+
+    if (
+      directMatch &&
+      typeof directMatch === "object" &&
+      (extractFill(directMatch) !== null ||
+        extractGas(directMatch) !== null ||
+        extractWeight(directMatch) !== null)
+    ) {
+      return directMatch as Record<string, unknown>;
+    }
+  }
+
+  for (const nestedValue of Object.values(data)) {
+    if (!nestedValue || typeof nestedValue !== "object") {
+      continue;
+    }
+
+    const match = findLocationAliasInData(
+      nestedValue as Record<string, unknown>,
+      aliases,
+    );
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function findWeightSourceInData(
+  data: Record<string, unknown>,
+  locationId: (typeof LIVE_LOCATION_IDS)[number],
+) {
+  const aliases = WEIGHT_LOCATION_ALIASES[locationId];
+
+  if (!aliases || aliases.length === 0) {
+    return null;
+  }
+
+  return findLocationAliasInData(data, aliases);
+}
+
 function simulateDependentBins(
   nextSensors: Record<string, SensorSnapshot>,
   locations: CampusLocation[],
@@ -700,23 +755,30 @@ export function CampusMonitoringProvider({
 
           for (const liveId of LIVE_LOCATION_IDS) {
             const match = findBinInData(snapshotValue, liveId);
+            const weightSource = findWeightSourceInData(snapshotValue, liveId);
 
             if (!match) {
-              continue;
+              if (!weightSource) {
+                continue;
+              }
             }
 
-            const fill = extractFill(match);
-            const gas = extractGas(match);
-            const weightPercent = extractWeight(match);
+            const fill = match ? extractFill(match) : null;
+            const gas = match ? extractGas(match) : null;
+            const weightPercent = extractWeight(weightSource ?? match);
 
             nextSnapshots[liveId] = {
               fill: fill ?? nextSnapshots[liveId]?.fill ?? 0,
               gas: gas ?? nextSnapshots[liveId]?.gas ?? 0,
               weightPercent:
                 weightPercent ?? nextSnapshots[liveId]?.weightPercent ?? 0,
-              fillStatus: extractStatus(match, ["LevelStatus", "levelStatus"]),
-              gasStatus: extractStatus(match, ["GasStatus", "gasStatus"]),
-              weightStatus: extractStatus(match, [
+              fillStatus: match
+                ? extractStatus(match, ["LevelStatus", "levelStatus"])
+                : nextSnapshots[liveId]?.fillStatus,
+              gasStatus: match
+                ? extractStatus(match, ["GasStatus", "gasStatus"])
+                : nextSnapshots[liveId]?.gasStatus,
+              weightStatus: extractStatus(weightSource ?? match, [
                 "WeightStatus",
                 "weightStatus",
                 "LoadStatus",
