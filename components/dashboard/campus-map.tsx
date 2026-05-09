@@ -29,18 +29,21 @@ export function CampusMap({
   interactive = true,
   heightClass,
   zoom,
+  showInactiveBins = true,
 }: {
   bins: MonitoringBin[];
   truck: LiveTruck | null;
   interactive?: boolean;
   heightClass?: string;
   zoom?: number;
+  showInactiveBins?: boolean;
 }) {
   return (
     <CampusMapCanvas
       bins={bins}
       heightClass={heightClass}
       interactive={interactive}
+      showInactiveBins={showInactiveBins}
       truck={truck}
       zoom={zoom}
     />

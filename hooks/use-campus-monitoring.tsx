@@ -42,6 +42,7 @@ export type MonitoringBin = CampusLocation & {
   gasLabel: string;
   weightLabel: string;
   isLive: boolean;
+  isActive: boolean;
 };
 
 export type LiveTruck = {
@@ -63,6 +64,7 @@ type CustomLocationInput = {
 type CampusMonitoringContextValue = {
   bins: MonitoringBin[];
   criticalBins: MonitoringBin[];
+  inactiveBinCount: number;
   truck: LiveTruck | null;
   lastUpdatedLabel: string;
   connectionState: ConnectionState;
@@ -70,6 +72,7 @@ type CampusMonitoringContextValue = {
   alertCount: number;
   addCustomLocation: (input: CustomLocationInput) => Promise<string>;
   deleteCustomLocation: (locationId: string) => Promise<string>;
+  setBinActiveState: (locationId: string, isActive: boolean) => Promise<string>;
 };
 
 const CampusMonitoringContext = createContext<CampusMonitoringContextValue | null>(
@@ -659,6 +662,7 @@ export function CampusMonitoringProvider({
   const [customLocations, setCustomLocations] = useState<CampusLocation[]>([]);
   const [localDemoLocations, setLocalDemoLocations] = useState<CampusLocation[]>([]);
   const [deletedLocationIds, setDeletedLocationIds] = useState<string[]>([]);
+  const [inactiveLocationIds, setInactiveLocationIds] = useState<string[]>([]);
   const [sensorSnapshots, setSensorSnapshots] = useState<Record<string, SensorSnapshot>>(
     () => createSeededSensors(DEFAULT_CAMPUS_LOCATIONS),
   );
@@ -893,10 +897,33 @@ export function CampusMonitoringProvider({
       },
     );
 
+    const unsubscribeInactiveBins = onValue(
+      ref(database, "/inactiveBins"),
+      (snapshot) => {
+        const value = snapshot.val() as Record<string, boolean | null> | null;
+
+        if (!value) {
+          setInactiveLocationIds([]);
+          return;
+        }
+
+        const nextInactiveLocationIds = Object.entries(value)
+          .filter(([, isInactive]) => Boolean(isInactive))
+          .map(([locationId]) => locationId)
+          .sort((firstId, secondId) => firstId.localeCompare(secondId));
+
+        setInactiveLocationIds(nextInactiveLocationIds);
+      },
+      (error) => {
+        setErrorMessage(error.message || "Unable to load inactive bin states.");
+      },
+    );
+
     return () => {
       unsubscribeRoot();
       unsubscribeCustomLocations();
       unsubscribeDeletedLocations();
+      unsubscribeInactiveBins();
     };
   }, []);
 
@@ -908,11 +935,23 @@ export function CampusMonitoringProvider({
         weightPercent: 0,
         isLive: false,
       };
-      const fillSeverity = normalizeSeverity(snapshot.fillStatus, snapshot.fill);
-      const gasSeverity = normalizeSeverity(snapshot.gasStatus, snapshot.gas);
+      const isActive = !hasLocationId(inactiveLocationIds, location.id);
+      const renderedSnapshot = isActive
+        ? snapshot
+        : {
+            ...snapshot,
+            fill: 0,
+            gas: 0,
+            weightPercent: 0,
+          };
+      const fillSeverity = normalizeSeverity(
+        renderedSnapshot.fillStatus,
+        renderedSnapshot.fill,
+      );
+      const gasSeverity = normalizeSeverity(renderedSnapshot.gasStatus, renderedSnapshot.gas);
       const weightSeverity = normalizeSeverity(
-        snapshot.weightStatus,
-        snapshot.weightPercent,
+        renderedSnapshot.weightStatus,
+        renderedSnapshot.weightPercent,
       );
       const overallSeverity =
         fillSeverity === "high" ||
@@ -927,9 +966,9 @@ export function CampusMonitoringProvider({
 
       return {
         ...location,
-        fill: snapshot.fill,
-        gas: snapshot.gas,
-        weightPercent: snapshot.weightPercent,
+        fill: renderedSnapshot.fill,
+        gas: renderedSnapshot.gas,
+        weightPercent: renderedSnapshot.weightPercent,
         fillSeverity,
         gasSeverity,
         weightSeverity,
@@ -938,11 +977,13 @@ export function CampusMonitoringProvider({
         gasLabel: getSeverityLabel(gasSeverity),
         weightLabel: getSeverityLabel(weightSeverity),
         isLive: snapshot.isLive,
+        isActive,
       };
     }),
   );
 
   const criticalBins = bins.filter((bin) => bin.overallSeverity === "high");
+  const inactiveBinCount = bins.filter((bin) => !bin.isActive).length;
 
   async function addCustomLocation(input: CustomLocationInput) {
     const matchingIds = [...DEFAULT_CAMPUS_LOCATIONS, ...customLocations, ...localDemoLocations]
@@ -1019,11 +1060,46 @@ export function CampusMonitoringProvider({
     return location.name;
   }
 
+  async function setBinActiveState(locationId: string, isActive: boolean) {
+    const location =
+      locationsRef.current.find((item) => item.id === locationId) ??
+      DEFAULT_CAMPUS_LOCATIONS.find((item) => item.id === locationId) ??
+      customLocations.find((item) => item.id === locationId) ??
+      localDemoLocations.find((item) => item.id === locationId);
+
+    if (!location) {
+      throw new Error("Bin not found.");
+    }
+
+    if (!isFirebaseConfigured()) {
+      setInactiveLocationIds((previous) => {
+        if (isActive) {
+          return previous.filter((id) => id !== locationId);
+        }
+
+        return previous.includes(locationId) ? previous : [...previous, locationId];
+      });
+
+      return location.name;
+    }
+
+    const inactiveBinReference = ref(getRealtimeDatabase(), `/inactiveBins/${locationId}`);
+
+    if (isActive) {
+      await remove(inactiveBinReference);
+    } else {
+      await set(inactiveBinReference, true);
+    }
+
+    return location.name;
+  }
+
   return (
     <CampusMonitoringContext.Provider
       value={{
         bins,
         criticalBins,
+        inactiveBinCount,
         truck,
         lastUpdatedLabel,
         connectionState,
@@ -1031,6 +1107,7 @@ export function CampusMonitoringProvider({
         alertCount: criticalBins.length,
         addCustomLocation,
         deleteCustomLocation,
+        setBinActiveState,
       }}
     >
       {children}

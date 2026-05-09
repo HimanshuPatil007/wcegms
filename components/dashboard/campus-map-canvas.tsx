@@ -15,9 +15,14 @@ type CampusMapCanvasProps = {
   interactive?: boolean;
   heightClass?: string;
   zoom?: number;
+  showInactiveBins?: boolean;
 };
 
-function getMarkerColor(severity: MonitoringSeverity) {
+function getMarkerColor(severity: MonitoringSeverity, isActive: boolean) {
+  if (!isActive) {
+    return "#38bdf8";
+  }
+
   if (severity === "high") {
     return "#ff3b3b";
   }
@@ -29,8 +34,12 @@ function getMarkerColor(severity: MonitoringSeverity) {
   return "#34c759";
 }
 
-function createMarkerIcon(severity: MonitoringSeverity, small = false) {
-  const color = getMarkerColor(severity);
+function createMarkerIcon(
+  severity: MonitoringSeverity,
+  isActive: boolean,
+  small = false,
+) {
+  const color = getMarkerColor(severity, isActive);
   const size = small ? 16 : 24;
   const halo = small ? 4 : 7;
 
@@ -81,8 +90,10 @@ export function CampusMapCanvas({
   interactive = true,
   heightClass,
   zoom,
+  showInactiveBins = true,
 }: CampusMapCanvasProps) {
-  const center = getMapCenter(bins, truck);
+  const visibleBins = showInactiveBins ? bins : bins.filter((bin) => bin.isActive);
+  const center = getMapCenter(visibleBins, truck);
   const resolvedZoom = zoom ?? (interactive ? 17 : 16);
   const mapHeightClass =
     heightClass ?? (interactive ? "min-h-[720px]" : "min-h-[360px]");
@@ -134,10 +145,10 @@ export function CampusMapCanvas({
         />
       )}
 
-      {bins.map((bin) => (
+      {visibleBins.map((bin) => (
         <Marker
           key={bin.id}
-          icon={createMarkerIcon(bin.overallSeverity, !interactive)}
+          icon={createMarkerIcon(bin.overallSeverity, bin.isActive, !interactive)}
           position={[bin.latitude, bin.longitude]}
         >
           <Popup>
@@ -157,6 +168,10 @@ export function CampusMapCanvas({
               <div className="flex items-center justify-between">
                 <span>Weight</span>
                 <span>{bin.weightPercent.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Status</span>
+                <span>{bin.isActive ? "Active" : "Inactive"}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>Source</span>

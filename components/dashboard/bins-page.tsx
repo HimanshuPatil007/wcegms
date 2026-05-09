@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import { useCampusMonitoring } from "@/hooks/use-campus-monitoring";
+import { useWorkforce } from "@/hooks/use-workforce";
 
 function getCardClasses(severity: "low" | "medium" | "high") {
   if (severity === "high") {
@@ -26,8 +29,19 @@ function getProgressClasses(severity: "low" | "medium" | "high") {
   return "bg-[linear-gradient(90deg,#34c759,#5dde7e)]";
 }
 
+function getBinStateClasses(isActive: boolean) {
+  if (isActive) {
+    return "border-emerald-400/20 bg-emerald-400/10 text-emerald-100";
+  }
+
+  return "border-sky-400/25 bg-sky-400/12 text-sky-100";
+}
+
 export function BinsPage() {
-  const { bins } = useCampusMonitoring();
+  const { bins, inactiveBinCount, setBinActiveState } = useCampusMonitoring();
+  const { accessRole } = useWorkforce();
+  const [pendingBinId, setPendingBinId] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const sortedBins = [...bins].sort((firstBin, secondBin) => {
     const firstLocationNumber = Number(firstBin.id.match(/\d+/)?.[0] ?? Number.MAX_SAFE_INTEGER);
     const secondLocationNumber = Number(
@@ -36,14 +50,46 @@ export function BinsPage() {
 
     return firstLocationNumber - secondLocationNumber;
   });
+  const canManageBinState = accessRole === "admin";
+
+  async function handleBinStateToggle(binId: string, isActive: boolean) {
+    try {
+      setPendingBinId(binId);
+      setFeedbackMessage(null);
+      const binName = await setBinActiveState(binId, isActive);
+      setFeedbackMessage(`${binName} is now ${isActive ? "active" : "inactive"}.`);
+    } catch (error) {
+      setFeedbackMessage(
+        error instanceof Error ? error.message : "Unable to update the bin state.",
+      );
+    } finally {
+      setPendingBinId(null);
+    }
+  }
 
   return (
     <section className="rounded-[34px] border border-white/8 bg-[linear-gradient(180deg,#121d30_0%,#0c1422_100%)] p-7 shadow-[0_18px_50px_rgba(2,6,23,0.34)] xl:p-8">
-      <div className="mb-6">
-        <p className="text-base font-semibold uppercase tracking-[0.3em] text-amber-200 xl:text-lg">
-          All Bins
-        </p>
+      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="text-base font-semibold uppercase tracking-[0.3em] text-amber-200 xl:text-lg">
+            All Bins
+          </p>
+          <p className="mt-3 text-sm text-slate-400">
+            {inactiveBinCount > 0
+              ? `${inactiveBinCount} inactive bin${inactiveBinCount === 1 ? "" : "s"} will appear in sky blue on the map.`
+              : "All bins are currently active."}
+          </p>
+        </div>
+        <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+          {canManageBinState ? "Admin controls enabled" : "Read-only status"}
+        </div>
       </div>
+
+      {feedbackMessage ? (
+        <div className="mb-5 rounded-[20px] border border-cyan-500/15 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+          {feedbackMessage}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         {sortedBins.map((bin, index) => (
@@ -51,7 +97,7 @@ export function BinsPage() {
             key={bin.id}
             className={`surface-hover rounded-[24px] border p-4 xl:p-5 ${getCardClasses(
               bin.overallSeverity,
-            )}`}
+            )} ${bin.isActive ? "" : "ring-1 ring-sky-400/35"}`}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -65,9 +111,18 @@ export function BinsPage() {
                   {bin.id}
                 </p>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-200">
-                {bin.isLive ? "Live" : "Sim"}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] ${getBinStateClasses(
+                    bin.isActive,
+                  )}`}
+                >
+                  {bin.isActive ? "Active" : "Inactive"}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-200">
+                  {bin.isLive ? "Live" : "Sim"}
+                </span>
+              </div>
             </div>
 
             <div className="mt-3.5 grid gap-2 lg:grid-cols-3">
@@ -119,6 +174,27 @@ export function BinsPage() {
                 </div>
               </div>
             </div>
+
+            {canManageBinState ? (
+              <div className="mt-4 flex justify-end">
+                <button
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    bin.isActive
+                      ? "bg-[linear-gradient(135deg,#38bdf8,#0ea5e9)] text-slate-950 hover:brightness-110"
+                      : "border border-emerald-400/25 bg-emerald-400/12 text-emerald-100 hover:bg-emerald-400/18"
+                  } ${pendingBinId === bin.id ? "cursor-wait opacity-70" : ""}`}
+                  disabled={pendingBinId === bin.id}
+                  onClick={() => handleBinStateToggle(bin.id, !bin.isActive)}
+                  type="button"
+                >
+                  {pendingBinId === bin.id
+                    ? "Updating..."
+                    : bin.isActive
+                      ? "Make Inactive"
+                      : "Make Active"}
+                </button>
+              </div>
+            ) : null}
           </article>
         ))}
       </div>
