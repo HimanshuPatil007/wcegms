@@ -1,8 +1,18 @@
-import { get, onValue, ref } from "firebase/database";
+import { get, onValue, ref, set } from "firebase/database";
 
 import { getBinLocationName } from "@/lib/bin-location-names";
 import { getRealtimeDatabase } from "@/lib/firebase/config";
 import type { BinLocation, GarbageBin, GarbageBinRecord } from "@/lib/firebase/types";
+
+export type AnalyticsHistoryMetric = {
+  fill: string;
+  gas: string;
+};
+
+export type AnalyticsHistoryRow = {
+  timestamp: string;
+  metrics: Record<string, AnalyticsHistoryMetric>;
+};
 
 function toNumber(value: unknown) {
   const numericValue =
@@ -53,6 +63,55 @@ function normalizeBinsPayload(value: unknown): GarbageBin[] {
   return Object.entries(value as GarbageBinRecord)
     .map(([binId, binValue]) => normalizeBinRecord(binId, binValue))
     .sort((firstBin, secondBin) => firstBin.binId.localeCompare(secondBin.binId));
+}
+
+function normalizeAnalyticsMetric(value: unknown): AnalyticsHistoryMetric {
+  const metric = (value ?? {}) as Partial<AnalyticsHistoryMetric>;
+
+  return {
+    fill:
+      typeof metric.fill === "string" && metric.fill.trim()
+        ? metric.fill
+        : "0.0%",
+    gas:
+      typeof metric.gas === "string" && metric.gas.trim()
+        ? metric.gas
+        : "0.0%",
+  };
+}
+
+function normalizeAnalyticsHistoryPayload(value: unknown): AnalyticsHistoryRow[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  return Object.values(value as Record<string, unknown>)
+    .map((rowValue) => {
+      const row = (rowValue ?? {}) as Partial<AnalyticsHistoryRow>;
+      const metricsRecord =
+        row.metrics && typeof row.metrics === "object"
+          ? Object.fromEntries(
+              Object.entries(row.metrics).map(([binId, metricValue]) => [
+                binId,
+                normalizeAnalyticsMetric(metricValue),
+              ]),
+            )
+          : {};
+
+      return {
+        timestamp:
+          typeof row.timestamp === "string" && row.timestamp.trim()
+            ? row.timestamp
+            : "",
+        metrics: metricsRecord,
+      };
+    })
+    .filter((row) => row.timestamp)
+    .sort((firstRow, secondRow) => firstRow.timestamp.localeCompare(secondRow.timestamp));
+}
+
+function getAnalyticsHistoryKey(timestamp: string) {
+  return timestamp.replace(" ", "T").replace(/:/g, "-");
 }
 
 export async function fetchAllBins() {
@@ -108,4 +167,30 @@ export function subscribeToBinsRealtime(
       onError?.(error);
     },
   );
+}
+
+export function subscribeToAnalyticsHistory(
+  callback: (rows: AnalyticsHistoryRow[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const analyticsHistoryReference = ref(getRealtimeDatabase(), "analyticsHistory");
+
+  return onValue(
+    analyticsHistoryReference,
+    (snapshot) => {
+      callback(snapshot.exists() ? normalizeAnalyticsHistoryPayload(snapshot.val()) : []);
+    },
+    (error) => {
+      onError?.(error);
+    },
+  );
+}
+
+export async function upsertAnalyticsHistoryRow(row: AnalyticsHistoryRow) {
+  const analyticsHistoryReference = ref(
+    getRealtimeDatabase(),
+    `analyticsHistory/${getAnalyticsHistoryKey(row.timestamp)}`,
+  );
+
+  await set(analyticsHistoryReference, row);
 }

@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   useCampusMonitoring,
   type MonitoringBin,
 } from "@/hooks/use-campus-monitoring";
+import { isFirebaseConfigured } from "@/lib/firebase/config";
+import {
+  subscribeToAnalyticsHistory,
+  upsertAnalyticsHistoryRow,
+  type AnalyticsHistoryRow,
+} from "@/lib/firebase/database";
 import {
   downloadSensorMonitoringReportPdf,
   type ReportPdfColumn,
@@ -30,8 +36,11 @@ type AnalyticsTableRow = {
 
 const SHEET_PAGE_SIZE = 18;
 const DEFAULT_SELECTED_DUSTBINS = ["location1", "location2", "location3"];
-const SENSOR_ANALYTICS_BIN_IDS = ["location1", "location2", "location3"] as const;
-const REPORT_BIN_DEFINITIONS = {
+const ZERO_ANALYTICS_METRIC: AnalyticsMetric = {
+  fill: "0.0%",
+  gas: "0.0%",
+};
+const MANUAL_REPORT_BIN_DEFINITIONS = {
   location1: {
     fillKey: "studyFill",
     gasKey: "studyGas",
@@ -70,42 +79,113 @@ function formatDisplayTimestamp(reportTimestamp: string) {
   return `${day}-${month}-${year} ${timePart}`;
 }
 
-function getAnalyticsMetric(
-  row: SensorMonitoringLogRow,
-  bin: MonitoringBin | undefined,
-) {
-  if (
-    !bin ||
-    !SENSOR_ANALYTICS_BIN_IDS.includes(
-      bin.id as (typeof SENSOR_ANALYTICS_BIN_IDS)[number],
-    )
-  ) {
-    return {
-      fill: "0",
-      gas: "0",
-    };
-  }
-
-  const reportDefinition = REPORT_BIN_DEFINITIONS[
-    bin.id as keyof typeof REPORT_BIN_DEFINITIONS
-  ];
-
-  return {
-    fill: row[reportDefinition.fillKey],
-    gas: row[reportDefinition.gasKey],
-  };
+function padDateTimeSegment(value: number) {
+  return String(value).padStart(2, "0");
 }
 
-function buildAnalyticsRows(
-  rows: SensorMonitoringLogRow[],
+function getReportTimestamp(date: Date) {
+  return [
+    date.getFullYear(),
+    padDateTimeSegment(date.getMonth() + 1),
+    padDateTimeSegment(date.getDate()),
+  ].join("-") +
+    ` ${padDateTimeSegment(date.getHours())}:${padDateTimeSegment(date.getMinutes())}`;
+}
+
+function formatMetricPercentage(value: number) {
+  const normalizedValue =
+    Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
+
+  return `${normalizedValue.toFixed(1)}%`;
+}
+
+function buildAnalyticsSnapshotRow(allBins: MonitoringBin[]) {
+  return {
+    timestamp: getReportTimestamp(new Date()),
+    metrics: Object.fromEntries(
+      allBins.map((bin) => [
+        bin.id,
+        {
+          fill: formatMetricPercentage(bin.fill),
+          gas: formatMetricPercentage(bin.gas),
+        },
+      ]),
+    ),
+  } satisfies AnalyticsTableRow;
+}
+
+function buildManualAnalyticsRows(rows: SensorMonitoringLogRow[]) {
+  return rows.map((row) => ({
+    timestamp: row.timestamp,
+    metrics: Object.fromEntries(
+      Object.entries(MANUAL_REPORT_BIN_DEFINITIONS).map(([binId, definition]) => [
+        binId,
+        {
+          fill: row[definition.fillKey],
+          gas: row[definition.gasKey],
+        },
+      ]),
+    ),
+  })) satisfies AnalyticsTableRow[];
+}
+
+function mergeAnalyticsRows(...rowGroups: AnalyticsTableRow[][]) {
+  const rowsByTimestamp = new Map<string, AnalyticsTableRow>();
+
+  for (const rows of rowGroups) {
+    for (const row of rows) {
+      const existingRow = rowsByTimestamp.get(row.timestamp);
+
+      rowsByTimestamp.set(row.timestamp, {
+        timestamp: row.timestamp,
+        metrics: {
+          ...(existingRow?.metrics ?? {}),
+          ...row.metrics,
+        },
+      });
+    }
+  }
+
+  return [...rowsByTimestamp.values()].sort((firstRow, secondRow) =>
+    firstRow.timestamp.localeCompare(secondRow.timestamp),
+  );
+}
+
+function upsertAnalyticsRows(
+  rows: AnalyticsTableRow[],
+  nextRow: AnalyticsTableRow,
+) {
+  if (rows.length > 0 && rows.at(-1)?.timestamp === nextRow.timestamp) {
+    return [...rows.slice(0, -1), nextRow];
+  }
+
+  return [...rows, nextRow].sort((firstRow, secondRow) =>
+    firstRow.timestamp.localeCompare(secondRow.timestamp),
+  );
+}
+
+function buildSelectedAnalyticsRows(
+  rows: AnalyticsTableRow[],
   selectedBins: MonitoringBin[],
 ) {
   return rows.map((row) => ({
     timestamp: row.timestamp,
     metrics: Object.fromEntries(
-      selectedBins.map((bin) => [bin.id, getAnalyticsMetric(row, bin)]),
+      selectedBins.map((bin) => [bin.id, row.metrics[bin.id] ?? ZERO_ANALYTICS_METRIC]),
     ),
   })) satisfies AnalyticsTableRow[];
+}
+
+function buildZeroAnalyticsRow(
+  timestamp: string,
+  selectedBins: MonitoringBin[],
+) {
+  return {
+    timestamp,
+    metrics: Object.fromEntries(
+      selectedBins.map((bin) => [bin.id, ZERO_ANALYTICS_METRIC]),
+    ),
+  } satisfies AnalyticsTableRow;
 }
 
 function buildPdfExportColumns(selectedBins: MonitoringBin[]) {
@@ -142,19 +222,70 @@ function buildPdfExportRows(
 
 export function AnalyticsPage() {
   const { bins } = useCampusMonitoring();
+  const currentRangeValue = toDateTimeLocalValue(getReportTimestamp(new Date()));
   const [selectedIds, setSelectedIds] = useState(DEFAULT_SELECTED_DUSTBINS);
-  const [downloadFrom, setDownloadFrom] = useState(
-    toDateTimeLocalValue(SENSOR_MONITORING_REPORT_ROWS[0]?.timestamp ?? ""),
-  );
-  const [downloadTo, setDownloadTo] = useState(
-    toDateTimeLocalValue(
-      SENSOR_MONITORING_REPORT_ROWS.at(-1)?.timestamp ??
-        SENSOR_MONITORING_REPORT_ROWS[0]?.timestamp ??
-        "",
-    ),
-  );
+  const [manualDownloadFrom, setManualDownloadFrom] = useState(currentRangeValue);
+  const [manualDownloadTo, setManualDownloadTo] = useState(currentRangeValue);
   const [sheetPage, setSheetPage] = useState(1);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [liveHistoryRows, setLiveHistoryRows] = useState<AnalyticsTableRow[]>([]);
+  const [isUsingAutoRange, setIsUsingAutoRange] = useState(true);
+  const lastStoredSnapshotRef = useRef("");
+  const manualHistoryRows = buildManualAnalyticsRows(SENSOR_MONITORING_REPORT_ROWS);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured()) {
+      return;
+    }
+
+    return subscribeToAnalyticsHistory(
+      (rows) => {
+        setLiveHistoryRows(rows as AnalyticsTableRow[]);
+      },
+      () => {
+        setLiveHistoryRows([]);
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (bins.length === 0) {
+      return;
+    }
+
+    const sortedBins = [...bins].sort((firstBin, secondBin) =>
+      firstBin.id.localeCompare(secondBin.id),
+    );
+    const nextRow = buildAnalyticsSnapshotRow(sortedBins);
+    const nextSnapshotSignature = `${nextRow.timestamp}|${JSON.stringify(nextRow.metrics)}`;
+
+    if (lastStoredSnapshotRef.current === nextSnapshotSignature) {
+      return;
+    }
+
+    lastStoredSnapshotRef.current = nextSnapshotSignature;
+
+    setLiveHistoryRows((previousRows) => upsertAnalyticsRows(previousRows, nextRow));
+
+    if (!isFirebaseConfigured()) {
+      return;
+    }
+
+    void upsertAnalyticsHistoryRow(nextRow as AnalyticsHistoryRow);
+  }, [bins]);
+
+  const historyRows = mergeAnalyticsRows(manualHistoryRows, liveHistoryRows);
+
+  const downloadFrom =
+    isUsingAutoRange && historyRows.length > 0
+      ? toDateTimeLocalValue(historyRows[0].timestamp)
+      : manualDownloadFrom;
+  const downloadTo =
+    isUsingAutoRange && historyRows.length > 0
+      ? toDateTimeLocalValue(
+          historyRows.at(-1)?.timestamp ?? historyRows[0].timestamp,
+        )
+      : manualDownloadTo;
 
   const selectedFromValue = toReportTimestampValue(downloadFrom);
   const selectedToValue = toReportTimestampValue(downloadTo);
@@ -170,45 +301,53 @@ export function AnalyticsPage() {
     hasValidDownloadRange && downloadFrom && downloadTo
       ? `${formatDownloadBoundary(downloadFrom)} to ${formatDownloadBoundary(downloadTo)}`
       : "Select a valid date and time range";
-  const filteredReportRows = hasValidDownloadRange
-    ? SENSOR_MONITORING_REPORT_ROWS.filter(
+  const filteredHistoryRows = hasValidDownloadRange
+    ? historyRows.filter(
         (row) =>
           row.timestamp >= selectedFromValue && row.timestamp <= selectedToValue,
       )
     : [];
-  const visibleRowCount = selectedBins.length > 0 ? filteredReportRows.length : 0;
+  const zeroFallbackRow =
+    hasValidDownloadRange && selectedBins.length > 0
+      ? buildZeroAnalyticsRow(selectedToValue || selectedFromValue, selectedBins)
+      : null;
+  const filteredReportRows =
+    selectedBins.length > 0
+      ? buildSelectedAnalyticsRows(filteredHistoryRows, selectedBins)
+      : [];
+  const exportAnalyticsRows =
+    filteredReportRows.length > 0
+      ? filteredReportRows
+      : zeroFallbackRow
+        ? [zeroFallbackRow]
+        : [];
+  const isUsingZeroFallback =
+    filteredReportRows.length === 0 && exportAnalyticsRows.length > 0;
+  const visibleRowCount = exportAnalyticsRows.length;
   const sheetPageCount = Math.max(1, Math.ceil(visibleRowCount / SHEET_PAGE_SIZE));
   const currentSheetPage = Math.min(sheetPage, sheetPageCount);
   const sheetStartIndex = (currentSheetPage - 1) * SHEET_PAGE_SIZE;
-  const pageReportRows = filteredReportRows.slice(
+  const pageReportRows = exportAnalyticsRows.slice(
     sheetStartIndex,
     sheetStartIndex + SHEET_PAGE_SIZE,
   );
-  const visibleReportRows = buildAnalyticsRows(pageReportRows, selectedBins);
-  const latestReportRow =
-    filteredReportRows.length > 0
-      ? buildAnalyticsRows(
-          [filteredReportRows.at(-1) ?? filteredReportRows[0]],
-          selectedBins,
-        )[0]
-      : null;
+  const visibleReportRows = pageReportRows;
+  const latestReportRow = exportAnalyticsRows.at(-1) ?? null;
   const selectedDustbinLabel =
     selectedBins.length > 0
       ? selectedBins.map((bin) => bin.name).join(", ")
       : "No dustbin selected";
-  const exportAnalyticsRows =
-    hasValidDownloadRange && selectedBins.length > 0
-      ? buildAnalyticsRows(filteredReportRows, selectedBins)
-      : [];
   const pdfColumns = buildPdfExportColumns(selectedBins);
   const pdfRows = buildPdfExportRows(exportAnalyticsRows, selectedBins);
+  const canDownloadPdf =
+    !isDownloading &&
+    hasValidDownloadRange &&
+    selectedBins.length > 0 &&
+    pdfColumns.length > 1 &&
+    pdfRows.length > 0;
 
   async function handleDownloadPdf() {
-    if (
-      !hasValidDownloadRange ||
-      pdfRows.length === 0 ||
-      pdfColumns.length <= 1
-    ) {
+    if (!canDownloadPdf) {
       return;
     }
 
@@ -273,7 +412,8 @@ export function AnalyticsPage() {
               className="rounded-2xl border border-white/10 bg-[#172337] px-4 py-3 text-white outline-none"
               max={downloadTo || undefined}
               onChange={(event) => {
-                setDownloadFrom(event.target.value);
+                setIsUsingAutoRange(false);
+                setManualDownloadFrom(event.target.value);
                 setSheetPage(1);
               }}
               type="datetime-local"
@@ -289,7 +429,8 @@ export function AnalyticsPage() {
               className="rounded-2xl border border-white/10 bg-[#172337] px-4 py-3 text-white outline-none"
               min={downloadFrom || undefined}
               onChange={(event) => {
-                setDownloadTo(event.target.value);
+                setIsUsingAutoRange(false);
+                setManualDownloadTo(event.target.value);
                 setSheetPage(1);
               }}
               type="datetime-local"
@@ -299,19 +440,11 @@ export function AnalyticsPage() {
 
           <button
             className={`rounded-2xl bg-[linear-gradient(135deg,#5eead4,#38bdf8)] px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 ${
-              isDownloading ||
-              !hasValidDownloadRange ||
-              pdfRows.length === 0 ||
-              pdfColumns.length <= 1
+              !canDownloadPdf
                 ? "cursor-not-allowed opacity-60"
                 : ""
             }`}
-            disabled={
-              isDownloading ||
-              !hasValidDownloadRange ||
-              pdfRows.length === 0 ||
-              pdfColumns.length <= 1
-            }
+            disabled={!canDownloadPdf}
             onClick={handleDownloadPdf}
             type="button"
           >
@@ -332,9 +465,10 @@ export function AnalyticsPage() {
             <p className="text-xs text-amber-200">
               Select one or more dustbins from the list to view report data.
             </p>
-          ) : filteredReportRows.length === 0 ? (
+          ) : isUsingZeroFallback ? (
             <p className="text-xs text-amber-200">
-              No report rows are available in the selected date-time range.
+              No past data is available in the selected range, so zero values are
+              shown for the report export.
             </p>
           ) : (
             <p className="text-xs text-emerald-200">
@@ -364,7 +498,7 @@ export function AnalyticsPage() {
                 Page {currentSheetPage} / {sheetPageCount}
               </span>
               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-white">
-                {visibleRowCount} rows
+                {visibleRowCount} row{visibleRowCount === 1 ? "" : "s"}
               </span>
             </div>
           </div>
